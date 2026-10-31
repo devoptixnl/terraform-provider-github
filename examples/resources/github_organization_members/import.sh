@@ -1,0 +1,1 @@
+terraform import github_organization_members.example my-org

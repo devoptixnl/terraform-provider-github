@@ -1,0 +1,57 @@
+---
+page_title: "{{.Name}} ({{.Type}}) - {{.RenderedProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+~> This resource is not compatible with [`github_membership`](membership); use either `github_organization_members` or `github_membership`.
+
+{{ .Description | trimspace }}
+
+This resource sets the members of the organization and their roles, and removes every member not listed. Users who are not yet members are invited, and pending invitations count as membership so they do not show as drift. Pending invitations for users who are not listed are cancelled; invitations sent by email address are ignored. The `admin` role is the organization owner role.
+
+!> Every member not listed is removed from the organization on apply, including the user or app behind the provider token. Review the plan before applying, and keep yourself in `members`. At least one `admin` is required.
+
+When this resource is destroyed it is only removed from the Terraform state; no members are removed.
+
+{{ if .HasExamples -}}
+## Example Usage
+
+{{- range .ExampleFiles }}
+
+{{ tffile . }}
+{{- end }}
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+{{- if or .HasImport .HasImportIDConfig .HasImportIdentityConfig }}
+
+## Import
+
+This resource is imported by the organization name, which must match the provider's `owner`.
+
+Import is supported using the following syntax:
+{{- end }}
+{{- if .HasImportIdentityConfig }}
+
+In Terraform v1.12.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `identity` attribute, for example:
+
+{{tffile .ImportIdentityConfigFile }}
+
+{{ .IdentitySchemaMarkdown | trimspace }}
+{{- end }}
+{{- if .HasImportIDConfig }}
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+{{tffile .ImportIDConfigFile }}
+{{- end }}
+{{- if .HasImport }}
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+{{codefile "shell" .ImportFile }}
+{{- end }}
