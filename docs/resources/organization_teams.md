@@ -13,7 +13,9 @@ This resource lists the teams that may exist in the organization and deletes eve
 
 !> Every team not listed is deleted on apply, together with its members and repository access. A team created with `github_team` but left out of `team_slugs` is deleted and then created again on each apply.
 
-When this resource is destroyed it is only removed from the Terraform state; no teams are deleted.
+The provider token must be able to [delete teams](https://docs.github.com/en/rest/teams/teams#delete-a-team) in the organization, which needs organization owner rights; a classic token needs the `admin:org` scope.
+
+When this resource is destroyed it is only removed from the Terraform state; no teams are deleted. Terraform shows a warning when this happens.
 
 ## Example Usage
 

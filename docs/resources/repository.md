@@ -58,7 +58,7 @@ resource "github_repository" "forked_repo" {
 - `allow_squash_merge` (Boolean) Set to 'false' to disable squash merges on the repository.
 - `allow_update_branch` (Boolean) Set to 'true' to always suggest updating pull request branches.
 - `archive_on_destroy` (Boolean) Set to 'true' to archive the repository instead of deleting on destroy.
-- `archived` (Boolean) Specifies if the repository should be archived. Defaults to 'false'. NOTE Currently, the API does not support unarchiving.
+- `archived` (Boolean) Specifies if the repository should be archived. Defaults to 'false'. Setting it back to 'false' unarchives the repository.
 - `auto_init` (Boolean) Set to 'true' to produce an initial commit in the repository.
 - `default_branch` (String, Deprecated) The name of the default branch of the repository. NOTE: This can only be set after a repository has already been created, and after a correct reference has been created for the target branch inside the repository. This means a user will have to omit this parameter from the initial repository creation and create the target branch inside of the repository prior to setting this attribute.
 - `delete_branch_on_merge` (Boolean) Automatically delete head branch after a pull request is merged. Defaults to 'false'.

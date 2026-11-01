@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -19,9 +20,9 @@ func resourceGithubOrganizationTeams() *schema.Resource {
 		CreateContext: resourceGithubOrganizationTeamsCreateOrUpdate,
 		ReadContext:   resourceGithubOrganizationTeamsRead,
 		UpdateContext: resourceGithubOrganizationTeamsCreateOrUpdate,
-		DeleteContext: resourceGithubOrganizationTeamsDelete,
+		DeleteContext: stateOnlyDelete("Removing organization teams from state only; no teams were deleted."),
 		Importer: &schema.ResourceImporter{
-			StateContext: resourceGithubOrganizationTeamsImport,
+			StateContext: importOrganizationSingleton,
 		},
 
 		Description: "Resource to authoritatively manage which teams exist in a GitHub organization.",
@@ -30,11 +31,12 @@ func resourceGithubOrganizationTeams() *schema.Resource {
 			"team_slugs": {
 				Type:     schema.TypeSet,
 				Required: true,
+				MinItems: 1,
 				Elem: &schema.Schema{
 					Type:             schema.TypeString,
 					DiffSuppressFunc: caseInsensitive(),
 				},
-				Set:         func(v any) int { return schema.HashString(strings.ToLower(v.(string))) },
+				Set:         caseInsensitiveStringHash,
 				Description: "Slugs of the teams that may exist in the organization. Any other team is deleted.",
 			},
 		},
@@ -48,10 +50,7 @@ func resourceGithubOrganizationTeamsCreateOrUpdate(ctx context.Context, d *schem
 	}
 
 	slugs, _ := d.Get("team_slugs").(*schema.Set)
-	want := make([]string, 0, slugs.Len())
-	for _, v := range slugs.List() {
-		want = append(want, v.(string))
-	}
+	want := expandStringList(slugs.List())
 
 	current, err := getOrganizationTeamParents(ctx, meta)
 	if err != nil {
@@ -77,7 +76,7 @@ func resourceGithubOrganizationTeamsCreateOrUpdate(ctx context.Context, d *schem
 
 	d.SetId(meta.name)
 
-	return resourceGithubOrganizationTeamsRead(ctx, d, m)
+	return nil
 }
 
 func resourceGithubOrganizationTeamsRead(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -91,41 +90,11 @@ func resourceGithubOrganizationTeamsRead(ctx context.Context, d *schema.Resource
 		return diag.FromErr(err)
 	}
 
-	slugs := make([]any, 0, len(current))
-	for slug := range current {
-		slugs = append(slugs, slug)
-	}
-
-	if err := d.Set("team_slugs", slugs); err != nil {
+	if err := d.Set("team_slugs", flattenStringList(slices.Collect(maps.Keys(current)))); err != nil {
 		return diag.FromErr(err)
 	}
 
 	return nil
-}
-
-func resourceGithubOrganizationTeamsDelete(ctx context.Context, _ *schema.ResourceData, m any) diag.Diagnostics {
-	meta, _ := m.(*Owner)
-
-	// Destroying this resource only stops enforcing the team list; deleting
-	// every team would also drop all team repository access.
-	tflog.Warn(ctx, "Removing organization teams from state only; no teams were deleted.", map[string]any{"org": meta.name})
-
-	return nil
-}
-
-func resourceGithubOrganizationTeamsImport(ctx context.Context, d *schema.ResourceData, m any) ([]*schema.ResourceData, error) {
-	meta, _ := m.(*Owner)
-	if err := checkOrganization(meta); err != nil {
-		return nil, err
-	}
-
-	if id := d.Id(); !strings.EqualFold(id, meta.name) {
-		return nil, fmt.Errorf("import ID %q must be the provider's organization %q", id, meta.name)
-	}
-
-	d.SetId(meta.name)
-
-	return []*schema.ResourceData{d}, nil
 }
 
 // getOrganizationTeamParents returns every team slug in the organization,

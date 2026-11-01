@@ -13,9 +13,11 @@ Resource to authoritatively manage the members of a GitHub organization.
 
 This resource sets the members of the organization and their roles, and removes every member not listed. Users who are not yet members are invited, and pending invitations count as membership so they do not show as drift. Pending invitations for users who are not listed are cancelled; invitations sent by email address are ignored. The `admin` role is the organization owner role.
 
-!> Every member not listed is removed from the organization on apply, including the user or app behind the provider token. Review the plan before applying, and keep yourself in `members`. At least one `admin` is required.
+!> Every member not listed is removed from the organization on apply. Review the plan before applying. At least one `admin` is required, and when the provider authenticates as a user who is an organization admin, the apply fails before any change unless that user is listed as an `admin`.
 
-When this resource is destroyed it is only removed from the Terraform state; no members are removed.
+The provider token must be able to administer the organization: it lists members and invitations, [sets memberships](https://docs.github.com/en/rest/orgs/members#set-organization-membership-for-a-user) and [removes them](https://docs.github.com/en/rest/orgs/members#remove-organization-membership-for-a-user). A classic token needs the `admin:org` scope.
+
+When this resource is destroyed it is only removed from the Terraform state; no members are removed. Terraform shows a warning when this happens.
 
 ## Example Usage
 

@@ -1,0 +1,61 @@
+---
+page_title: "{{.Name}} ({{.Type}}) - {{.RenderedProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource lists the repositories that stay active in the organization and archives every other active repository on apply. Repositories are never deleted or unarchived. It does not create repositories; manage those with [`github_repository`](repository) and reference their names, so the repositories are created before this resource is applied. Applying fails before anything is archived if a listed repository does not exist.
+
+The plan shows the repositories the apply will archive in `repositories_to_archive`, including on the first apply. A repository created after the plan but before the apply is not in that list and is archived as well when it is not listed.
+
+A listed repository that is already archived stays archived; unarchive it with `archived = false` on its `github_repository` resource. Archived repositories that are not listed are ignored.
+
+!> Every active repository not listed is archived on apply, which makes it read-only. Resources that change an archived repository, such as files, labels, webhooks or collaborators, fail on their next apply. A repository managed with `github_repository` but left out of `repository_names` is archived on one apply and unarchived by its `github_repository` resource on the next, so build `repository_names` from the same map as the `github_repository` resources, as in the example. Use one instance of this resource per organization; two instances archive each other's repositories.
+
+Only repositories the provider token can see are enforced. The token must be able to [list the organization's repositories](https://docs.github.com/en/rest/repos/repos#list-organization-repositories) and [update](https://docs.github.com/en/rest/repos/repos#update-a-repository) every one of them, which needs admin access to each repository; a classic token needs the `repo` scope.
+
+When this resource is destroyed it is only removed from the Terraform state; no repositories are archived. Terraform shows a warning when this happens.
+
+{{ if .HasExamples -}}
+## Example Usage
+
+{{- range .ExampleFiles }}
+
+{{ tffile . }}
+{{- end }}
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+{{- if or .HasImport .HasImportIDConfig .HasImportIdentityConfig }}
+
+## Import
+
+This resource is imported by the organization name, which must match the provider's `owner`.
+
+Import is supported using the following syntax:
+{{- end }}
+{{- if .HasImportIdentityConfig }}
+
+In Terraform v1.12.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `identity` attribute, for example:
+
+{{tffile .ImportIdentityConfigFile }}
+
+{{ .IdentitySchemaMarkdown | trimspace }}
+{{- end }}
+{{- if .HasImportIDConfig }}
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+{{tffile .ImportIDConfigFile }}
+{{- end }}
+{{- if .HasImport }}
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+{{codefile "shell" .ImportFile }}
+{{- end }}

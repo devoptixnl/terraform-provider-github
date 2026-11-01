@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/go-cty/cty"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -113,6 +115,30 @@ func caseInsensitive() schema.SchemaDiffSuppressFunc {
 	return func(k, o, n string, d *schema.ResourceData) bool {
 		return strings.EqualFold(o, n)
 	}
+}
+
+// caseInsensitiveStringHash hashes a set of names that compare without case,
+// to pair with caseInsensitive() on the element schema.
+func caseInsensitiveStringHash(v any) int {
+	s, _ := v.(string)
+	return schema.HashString(strings.ToLower(s))
+}
+
+// importOrganizationSingleton imports a resource that manages one
+// organization-wide list, whose ID is the provider's organization.
+func importOrganizationSingleton(_ context.Context, d *schema.ResourceData, m any) ([]*schema.ResourceData, error) {
+	meta, _ := m.(*Owner)
+	if err := checkOrganization(meta); err != nil {
+		return nil, err
+	}
+
+	if id := d.Id(); !strings.EqualFold(id, meta.name) {
+		return nil, fmt.Errorf("import ID %q must be the provider's organization %q", id, meta.name)
+	}
+
+	d.SetId(meta.name)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func validateValueFunc(values []string) schema.SchemaValidateDiagFunc {
@@ -261,5 +287,17 @@ func toInt64(v any) int64 {
 		return int64(val)
 	default:
 		return 0
+	}
+}
+
+// stateOnlyDelete returns a Delete for an authoritative organization resource
+// whose destroy must leave the organization untouched, warning the user that
+// the resource was only removed from state.
+func stateOnlyDelete(summary string) schema.DeleteContextFunc {
+	return func(ctx context.Context, _ *schema.ResourceData, m any) diag.Diagnostics {
+		meta, _ := m.(*Owner)
+		tflog.Warn(ctx, summary, map[string]any{"org": meta.name})
+
+		return diag.Diagnostics{{Severity: diag.Warning, Summary: summary}}
 	}
 }

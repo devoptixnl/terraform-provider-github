@@ -10,6 +10,8 @@ Provides a GitHub membership resource.
 
 This resource allows you to add/remove users from your organization. When applied, an invitation will be sent to the user to become part of the organization. When destroyed, either the invitation will be cancelled or the user will be removed.
 
+~> This resource is not compatible with [`github_organization_members`](organization_members); use either one or the other.
+
 ## Example Usage
 
 {{ tffile "examples/resources/membership/example_1.tf" }}
