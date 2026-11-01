@@ -1,0 +1,57 @@
+---
+page_title: "{{.Name}} ({{.Type}}) - {{.RenderedProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource lists the repositories that stay active in the organization and archives every other repository on apply. Repositories are never deleted or unarchived. It does not create repositories; manage those with [`github_repository`](repository) and reference their names, so the repositories are created before this resource is applied. Applying fails if a listed repository does not exist.
+
+A listed repository that is already archived stays archived; unarchive it with `archived = false` on its `github_repository` resource. Archived repositories that are not listed are ignored.
+
+!> Every active repository not listed is archived on apply, which makes it read-only. A repository managed with `github_repository` but left out of `repository_names` is archived on one apply and unarchived by its `github_repository` resource on the next, until that resource sets `archived = true` or the repository is listed.
+
+When this resource is destroyed it is only removed from the Terraform state; no repositories are archived.
+
+{{ if .HasExamples -}}
+## Example Usage
+
+{{- range .ExampleFiles }}
+
+{{ tffile . }}
+{{- end }}
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+{{- if or .HasImport .HasImportIDConfig .HasImportIdentityConfig }}
+
+## Import
+
+This resource is imported by the organization name, which must match the provider's `owner`.
+
+Import is supported using the following syntax:
+{{- end }}
+{{- if .HasImportIdentityConfig }}
+
+In Terraform v1.12.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `identity` attribute, for example:
+
+{{tffile .ImportIdentityConfigFile }}
+
+{{ .IdentitySchemaMarkdown | trimspace }}
+{{- end }}
+{{- if .HasImportIDConfig }}
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+{{tffile .ImportIDConfigFile }}
+{{- end }}
+{{- if .HasImport }}
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+{{codefile "shell" .ImportFile }}
+{{- end }}

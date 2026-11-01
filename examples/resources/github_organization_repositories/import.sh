@@ -1,0 +1,1 @@
+terraform import github_organization_repositories.example my-org

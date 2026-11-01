@@ -214,6 +214,7 @@ func NewProvider(version, commit string) func() *schema.Provider {
 				"github_organization_custom_properties":                                 resourceGithubOrganizationCustomProperties(),
 				"github_organization_members":                                           resourceGithubOrganizationMembers(),
 				"github_organization_project":                                           resourceGithubOrganizationProject(),
+				"github_organization_repositories":                                      resourceGithubOrganizationRepositories(),
 				"github_organization_repository_role":                                   resourceGithubOrganizationRepositoryRole(),
 				"github_organization_role":                                              resourceGithubOrganizationRole(),
 				"github_organization_role_team":                                         resourceGithubOrganizationRoleTeam(),
