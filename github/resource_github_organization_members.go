@@ -21,7 +21,7 @@ func resourceGithubOrganizationMembers() *schema.Resource {
 		UpdateContext: resourceGithubOrganizationMembersCreateOrUpdate,
 		DeleteContext: resourceGithubOrganizationMembersDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: resourceGithubOrganizationMembersImport,
+			StateContext: importOrganizationSingleton,
 		},
 
 		CustomizeDiff: resourceGithubOrganizationMembersDiff,
@@ -99,6 +99,10 @@ func resourceGithubOrganizationMembersCreateOrUpdate(ctx context.Context, d *sch
 		return diag.FromErr(err)
 	}
 
+	if err := checkCallerStaysAdmin(ctx, meta, current, want); err != nil {
+		return diag.FromErr(err)
+	}
+
 	upserts, removals := organizationMemberChanges(current, want)
 
 	// Add and promote first so the organization never drops below the
@@ -125,7 +129,7 @@ func resourceGithubOrganizationMembersCreateOrUpdate(ctx context.Context, d *sch
 
 	d.SetId(meta.name)
 
-	return resourceGithubOrganizationMembersRead(ctx, d, m)
+	return nil
 }
 
 func resourceGithubOrganizationMembersRead(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -151,24 +155,10 @@ func resourceGithubOrganizationMembersDelete(ctx context.Context, _ *schema.Reso
 
 	// Removing every member would lock everyone, including the caller, out of
 	// the organization, so destroying this resource only stops managing them.
-	tflog.Warn(ctx, "Removing organization members from state only; no memberships were changed.", map[string]any{"org": meta.name})
+	summary := "Removing organization members from state only; no memberships were changed."
+	tflog.Warn(ctx, summary, map[string]any{"org": meta.name})
 
-	return nil
-}
-
-func resourceGithubOrganizationMembersImport(ctx context.Context, d *schema.ResourceData, m any) ([]*schema.ResourceData, error) {
-	meta, _ := m.(*Owner)
-	if err := checkOrganization(meta); err != nil {
-		return nil, err
-	}
-
-	if id := d.Id(); !strings.EqualFold(id, meta.name) {
-		return nil, fmt.Errorf("import ID %q must be the provider's organization %q", id, meta.name)
-	}
-
-	d.SetId(meta.name)
-
-	return []*schema.ResourceData{d}, nil
+	return diag.Diagnostics{{Severity: diag.Warning, Summary: summary}}
 }
 
 // getOrganizationMembers returns every member of the organization plus every
@@ -269,4 +259,40 @@ func organizationMemberChanges(current, want userMembers) (userMembers, []string
 	slices.Sort(removals)
 
 	return upserts, removals
+}
+
+// checkCallerStaysAdmin fails when the configuration would remove or demote
+// the authenticated user while they are an organization admin, which would
+// lock Terraform out of the organization in the middle of the apply. GitHub
+// App installations have no user and are not checked.
+func checkCallerStaysAdmin(ctx context.Context, meta *Owner, current, want userMembers) error {
+	caller, _, err := meta.v3client.Users.Get(ctx, "")
+	if err != nil {
+		if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response.StatusCode == http.StatusForbidden {
+			return nil
+		}
+		return fmt.Errorf("could not get the authenticated user: %w", err)
+	}
+
+	return callerAdminLockout(strings.ToLower(caller.GetLogin()), current, want)
+}
+
+func callerAdminLockout(caller string, current, want userMembers) error {
+	isAdmin := false
+	for _, member := range current {
+		if strings.EqualFold(member.login, caller) && member.role == "admin" {
+			isAdmin = true
+		}
+	}
+	if !isAdmin {
+		return nil
+	}
+
+	for _, member := range want {
+		if strings.EqualFold(member.login, caller) && member.role == "admin" {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("members must keep the authenticated user %q as an admin; removing or demoting them would lock Terraform out of the organization", caller)
 }

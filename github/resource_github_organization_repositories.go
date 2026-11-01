@@ -2,7 +2,9 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -19,8 +21,9 @@ func resourceGithubOrganizationRepositories() *schema.Resource {
 		UpdateContext: resourceGithubOrganizationRepositoriesCreateOrUpdate,
 		DeleteContext: resourceGithubOrganizationRepositoriesDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: resourceGithubOrganizationRepositoriesImport,
+			StateContext: importOrganizationSingleton,
 		},
+		CustomizeDiff: resourceGithubOrganizationRepositoriesDiff,
 
 		Description: "Resource to authoritatively manage which repositories are active in a GitHub organization.",
 
@@ -28,15 +31,56 @@ func resourceGithubOrganizationRepositories() *schema.Resource {
 			"repository_names": {
 				Type:     schema.TypeSet,
 				Required: true,
+				MinItems: 1,
 				Elem: &schema.Schema{
 					Type:             schema.TypeString,
 					DiffSuppressFunc: caseInsensitive(),
 				},
-				Set:         func(v any) int { return schema.HashString(strings.ToLower(v.(string))) },
+				Set:         caseInsensitiveStringHash,
 				Description: "Names of the repositories that may stay active in the organization. Any other repository is archived.",
+			},
+			"repositories_to_archive": {
+				Type:        schema.TypeSet,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "Active repositories that are not listed and will be archived on the next apply. Shown in the plan; empty after apply.",
 			},
 		},
 	}
+}
+
+// resourceGithubOrganizationRepositoriesDiff puts the repositories that the
+// apply will archive into the plan, so a reviewer sees them before they are
+// archived, including on the first apply when there is no prior state.
+func resourceGithubOrganizationRepositoriesDiff(ctx context.Context, d *schema.ResourceDiff, m any) error {
+	meta, _ := m.(*Owner)
+	if !meta.IsOrganization {
+		return nil
+	}
+
+	if !d.NewValueKnown("repository_names") {
+		return d.SetNewComputed("repositories_to_archive")
+	}
+
+	current, err := getOrganizationRepositories(ctx, meta)
+	if err != nil {
+		return err
+	}
+
+	names, _ := d.Get("repository_names").(*schema.Set)
+	archivals, _ := organizationRepositoryArchivals(current, expandStringList(names.List()))
+
+	pending := make([]any, 0, len(archivals))
+	for _, repo := range archivals {
+		pending = append(pending, repo.name)
+	}
+
+	old, _ := d.GetChange("repositories_to_archive")
+	if oldSet, ok := old.(*schema.Set); ok && oldSet.Len() == 0 && len(pending) == 0 {
+		return nil
+	}
+
+	return d.SetNew("repositories_to_archive", pending)
 }
 
 func resourceGithubOrganizationRepositoriesCreateOrUpdate(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -46,19 +90,25 @@ func resourceGithubOrganizationRepositoriesCreateOrUpdate(ctx context.Context, d
 	}
 
 	names, _ := d.Get("repository_names").(*schema.Set)
-	want := make([]string, 0, names.Len())
-	for _, v := range names.List() {
-		want = append(want, v.(string))
-	}
+	want := expandStringList(names.List())
 
 	current, err := getOrganizationRepositories(ctx, meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	archivals, err := organizationRepositoryArchivals(current, want)
-	if err != nil {
-		return diag.FromErr(err)
+	archivals, missing := organizationRepositoryArchivals(current, want)
+	// The organization listing can lag behind a repository created earlier in
+	// the same apply, so confirm each missing name directly.
+	for _, name := range missing {
+		repo, _, err := meta.v3client.Repositories.Get(ctx, meta.name, name)
+		if err != nil {
+			if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response.StatusCode == http.StatusNotFound {
+				return diag.Errorf("repository %q does not exist; create it, for example with github_repository, before listing it", name)
+			}
+			return diag.FromErr(fmt.Errorf("could not get repository %q: %w", name, err))
+		}
+		tflog.Debug(ctx, "Listed repository found outside the organization listing.", map[string]any{"org": meta.name, "repository": repo.GetName()})
 	}
 
 	for _, repo := range archivals {
@@ -70,8 +120,11 @@ func resourceGithubOrganizationRepositoriesCreateOrUpdate(ctx context.Context, d
 	}
 
 	d.SetId(meta.name)
+	if err := d.Set("repositories_to_archive", []any{}); err != nil {
+		return diag.FromErr(err)
+	}
 
-	return resourceGithubOrganizationRepositoriesRead(ctx, d, m)
+	return nil
 }
 
 func resourceGithubOrganizationRepositoriesRead(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -85,11 +138,10 @@ func resourceGithubOrganizationRepositoriesRead(ctx context.Context, d *schema.R
 		return diag.FromErr(err)
 	}
 
+	names, _ := d.Get("repository_names").(*schema.Set)
 	var configured []string
-	if names, ok := d.Get("repository_names").(*schema.Set); ok {
-		for _, v := range names.List() {
-			configured = append(configured, v.(string))
-		}
+	if names != nil {
+		configured = expandStringList(names.List())
 	}
 
 	if err := d.Set("repository_names", organizationRepositoryNamesState(current, configured)); err != nil {
@@ -104,24 +156,10 @@ func resourceGithubOrganizationRepositoriesDelete(ctx context.Context, _ *schema
 
 	// Destroying this resource only stops enforcing the repository list;
 	// archiving every repository would freeze the whole organization.
-	tflog.Warn(ctx, "Removing organization repositories from state only; no repositories were archived.", map[string]any{"org": meta.name})
+	summary := "Removing organization repositories from state only; no repositories were archived."
+	tflog.Warn(ctx, summary, map[string]any{"org": meta.name})
 
-	return nil
-}
-
-func resourceGithubOrganizationRepositoriesImport(ctx context.Context, d *schema.ResourceData, m any) ([]*schema.ResourceData, error) {
-	meta, _ := m.(*Owner)
-	if err := checkOrganization(meta); err != nil {
-		return nil, err
-	}
-
-	if id := d.Id(); !strings.EqualFold(id, meta.name) {
-		return nil, fmt.Errorf("import ID %q must be the provider's organization %q", id, meta.name)
-	}
-
-	d.SetId(meta.name)
-
-	return []*schema.ResourceData{d}, nil
+	return diag.Diagnostics{{Severity: diag.Warning, Summary: summary}}
 }
 
 type organizationRepository struct {
@@ -129,8 +167,8 @@ type organizationRepository struct {
 	archived bool
 }
 
-// getOrganizationRepositories returns every repository in the organization,
-// keyed by lowercased name.
+// getOrganizationRepositories returns every repository in the organization
+// that the provider's credential can see, keyed by lowercased name.
 func getOrganizationRepositories(ctx context.Context, meta *Owner) (map[string]organizationRepository, error) {
 	repos := make(map[string]organizationRepository)
 
@@ -149,18 +187,18 @@ func getOrganizationRepositories(ctx context.Context, meta *Owner) (map[string]o
 }
 
 // organizationRepositoryArchivals returns the active repositories that are
-// not listed, sorted by name. It fails if a listed repository does not exist.
-func organizationRepositoryArchivals(current map[string]organizationRepository, want []string) ([]organizationRepository, error) {
+// not listed, sorted by name, and the listed names that are not in current.
+func organizationRepositoryArchivals(current map[string]organizationRepository, want []string) (archivals []organizationRepository, missing []string) {
 	wanted := make(map[string]struct{}, len(want))
 	for _, name := range want {
-		name = strings.ToLower(name)
-		if _, ok := current[name]; !ok {
-			return nil, fmt.Errorf("repository %q does not exist; create it, for example with github_repository, before listing it", name)
+		key := strings.ToLower(name)
+		if _, ok := current[key]; !ok {
+			missing = append(missing, name)
 		}
-		wanted[name] = struct{}{}
+		wanted[key] = struct{}{}
 	}
+	slices.Sort(missing)
 
-	var archivals []organizationRepository
 	for key, repo := range current {
 		if _, ok := wanted[key]; !ok && !repo.archived {
 			archivals = append(archivals, repo)
@@ -170,7 +208,7 @@ func organizationRepositoryArchivals(current map[string]organizationRepository, 
 		return strings.Compare(strings.ToLower(a.name), strings.ToLower(b.name))
 	})
 
-	return archivals, nil
+	return archivals, missing
 }
 
 // organizationRepositoryNamesState returns the names to store in state: every

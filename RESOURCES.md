@@ -170,7 +170,9 @@ The overall status of each resource or data source is captured in this document 
 | `github_organization_block` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_custom_properties` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_custom_role` (🚫) | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
+| `github_organization_members` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_project` (🚫) | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
+| `github_organization_repositories` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_repository_role` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_role` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_role_team` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
@@ -179,6 +181,7 @@ The overall status of each resource or data source is captured in this document 
 | `github_organization_ruleset` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_security_manager` (🚫) | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_settings` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
+| `github_organization_teams` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_organization_webhook` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_project_card` (🚫) | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_project_column` (🚫) | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |

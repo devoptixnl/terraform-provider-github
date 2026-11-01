@@ -118,3 +118,37 @@ resource "github_organization_members" "test" {
 		})
 	})
 }
+
+func TestCallerAdminLockout(t *testing.T) {
+	t.Parallel()
+
+	admin := func(login string) userMember {
+		return userMember{userIdentity: userIdentity{login: login}, role: "admin"}
+	}
+	member := func(login string) userMember {
+		return userMember{userIdentity: userIdentity{login: login}, role: "member"}
+	}
+
+	tests := []struct {
+		name    string
+		current userMembers
+		want    userMembers
+		locked  bool
+	}{
+		{name: "caller_stays_admin", current: userMembers{admin("bot")}, want: userMembers{admin("Bot")}},
+		{name: "caller_removed", current: userMembers{admin("bot"), admin("jane")}, want: userMembers{admin("jane")}, locked: true},
+		{name: "caller_demoted", current: userMembers{admin("bot"), admin("jane")}, want: userMembers{admin("jane"), member("bot")}, locked: true},
+		{name: "caller_not_an_admin", current: userMembers{member("bot"), admin("jane")}, want: userMembers{admin("jane")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := callerAdminLockout("bot", tt.current, tt.want)
+			if (err != nil) != tt.locked {
+				t.Errorf("error = %v, want locked = %v", err, tt.locked)
+			}
+		})
+	}
+}

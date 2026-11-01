@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -113,6 +114,30 @@ func caseInsensitive() schema.SchemaDiffSuppressFunc {
 	return func(k, o, n string, d *schema.ResourceData) bool {
 		return strings.EqualFold(o, n)
 	}
+}
+
+// caseInsensitiveStringHash hashes a set of names that compare without case,
+// to pair with caseInsensitive() on the element schema.
+func caseInsensitiveStringHash(v any) int {
+	s, _ := v.(string)
+	return schema.HashString(strings.ToLower(s))
+}
+
+// importOrganizationSingleton imports a resource that manages one
+// organization-wide list, whose ID is the provider's organization.
+func importOrganizationSingleton(_ context.Context, d *schema.ResourceData, m any) ([]*schema.ResourceData, error) {
+	meta, _ := m.(*Owner)
+	if err := checkOrganization(meta); err != nil {
+		return nil, err
+	}
+
+	if id := d.Id(); !strings.EqualFold(id, meta.name) {
+		return nil, fmt.Errorf("import ID %q must be the provider's organization %q", id, meta.name)
+	}
+
+	d.SetId(meta.name)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func validateValueFunc(values []string) schema.SchemaValidateDiagFunc {

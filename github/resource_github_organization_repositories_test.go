@@ -1,11 +1,17 @@
 package github
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	sdkterraform "github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
@@ -18,7 +24,7 @@ func TestOrganizationRepositoryArchivals(t *testing.T) {
 		current  map[string]organizationRepository
 		want     []string
 		archived []string
-		err      string
+		missing  []string
 	}{
 		{
 			name:    "no_changes",
@@ -49,10 +55,10 @@ func TestOrganizationRepositoryArchivals(t *testing.T) {
 			want:    []string{"old"},
 		},
 		{
-			name:    "fails_on_missing_repository",
+			name:    "reports_missing_repository",
 			current: map[string]organizationRepository{"website": {name: "website"}},
-			want:    []string{"website", "ghost"},
-			err:     `repository "ghost" does not exist`,
+			want:    []string{"website", "Ghost"},
+			missing: []string{"Ghost"},
 		},
 	}
 
@@ -60,16 +66,10 @@ func TestOrganizationRepositoryArchivals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			archivals, err := organizationRepositoryArchivals(tt.current, tt.want)
+			archivals, missing := organizationRepositoryArchivals(tt.current, tt.want)
 
-			if tt.err != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.err) {
-					t.Fatalf("error = %v, want it to contain %q", err, tt.err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if !slices.Equal(missing, tt.missing) {
+				t.Errorf("missing = %v, want %v", missing, tt.missing)
 			}
 
 			var names []string
@@ -96,7 +96,8 @@ func TestOrganizationRepositoryNamesState(t *testing.T) {
 
 	got := make([]string, 0)
 	for _, v := range organizationRepositoryNamesState(current, configured) {
-		got = append(got, v.(string))
+		name, _ := v.(string)
+		got = append(got, name)
 	}
 	slices.Sort(got)
 
@@ -142,5 +143,105 @@ resource "github_organization_repositories" "test" {
 				},
 			},
 		})
+	})
+}
+
+func TestOrganizationRepositoriesCreateOrUpdate(t *testing.T) {
+	t.Parallel()
+
+	newServer := func(t *testing.T, archived *[]string) *Owner {
+		t.Helper()
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /orgs/acme/repos", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `[{"name":"website"},{"name":"Stale"},{"name":"frozen","archived":true}]`)
+		})
+		mux.HandleFunc("GET /repos/acme/lagging", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"name":"lagging"}`)
+		})
+		mux.HandleFunc("GET /repos/acme/ghost", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+		})
+		mux.HandleFunc("PATCH /repos/acme/{repo}", func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["archived"] != true || len(body) != 1 {
+				t.Errorf("PATCH %s body = %v, want only archived=true", r.URL.Path, body)
+			}
+			*archived = append(*archived, r.PathValue("repo"))
+			_, _ = io.WriteString(w, `{}`)
+		})
+
+		server := httptest.NewServer(mux)
+		t.Cleanup(server.Close)
+
+		return &Owner{name: "acme", IsOrganization: true, maxPerPage: 100, v3client: mustCreateTestGitHubClient(t, server.URL+"/")}
+	}
+
+	t.Run("plan_lists_repositories_to_archive", func(t *testing.T) {
+		t.Parallel()
+
+		var archived []string
+		meta := newServer(t, &archived)
+		config := sdkterraform.NewResourceConfigRaw(map[string]any{"repository_names": []any{"website"}})
+
+		diff, err := resourceGithubOrganizationRepositories().Diff(t.Context(), nil, config, meta)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var pending []string
+		for k, attr := range diff.Attributes {
+			if strings.HasPrefix(k, "repositories_to_archive.") && k != "repositories_to_archive.#" {
+				pending = append(pending, attr.New)
+			}
+		}
+		if !slices.Equal(pending, []string{"Stale"}) {
+			t.Errorf("repositories_to_archive = %v, want [Stale]", pending)
+		}
+		if len(archived) != 0 {
+			t.Errorf("plan archived %v", archived)
+		}
+	})
+
+	t.Run("archives_only_unlisted_active_repositories", func(t *testing.T) {
+		t.Parallel()
+
+		var archived []string
+		meta := newServer(t, &archived)
+		d := schema.TestResourceDataRaw(t, resourceGithubOrganizationRepositories().Schema, map[string]any{
+			"repository_names": []any{"Website", "lagging"},
+		})
+
+		if diags := resourceGithubOrganizationRepositoriesCreateOrUpdate(t.Context(), d, meta); diags.HasError() {
+			t.Fatalf("unexpected error: %v", diags)
+		}
+		if !slices.Equal(archived, []string{"Stale"}) {
+			t.Errorf("archived = %v, want [Stale]", archived)
+		}
+		if d.Id() != "acme" {
+			t.Errorf("id = %q, want acme", d.Id())
+		}
+	})
+
+	t.Run("fails_before_archiving_when_listed_repository_is_missing", func(t *testing.T) {
+		t.Parallel()
+
+		var archived []string
+		meta := newServer(t, &archived)
+		d := schema.TestResourceDataRaw(t, resourceGithubOrganizationRepositories().Schema, map[string]any{
+			"repository_names": []any{"website", "ghost"},
+		})
+
+		diags := resourceGithubOrganizationRepositoriesCreateOrUpdate(t.Context(), d, meta)
+		if !diags.HasError() || !strings.Contains(diags[0].Summary, `repository "ghost" does not exist`) {
+			t.Fatalf("diags = %v, want a missing repository error", diags)
+		}
+		if len(archived) != 0 {
+			t.Errorf("archived = %v, want none", archived)
+		}
+		if d.Id() != "" {
+			t.Errorf("id = %q, want it unset", d.Id())
+		}
 	})
 }
