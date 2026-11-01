@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -19,7 +20,7 @@ func resourceGithubOrganizationTeams() *schema.Resource {
 		CreateContext: resourceGithubOrganizationTeamsCreateOrUpdate,
 		ReadContext:   resourceGithubOrganizationTeamsRead,
 		UpdateContext: resourceGithubOrganizationTeamsCreateOrUpdate,
-		DeleteContext: resourceGithubOrganizationTeamsDelete,
+		DeleteContext: stateOnlyDelete("Removing organization teams from state only; no teams were deleted."),
 		Importer: &schema.ResourceImporter{
 			StateContext: importOrganizationSingleton,
 		},
@@ -89,27 +90,11 @@ func resourceGithubOrganizationTeamsRead(ctx context.Context, d *schema.Resource
 		return diag.FromErr(err)
 	}
 
-	slugs := make([]any, 0, len(current))
-	for slug := range current {
-		slugs = append(slugs, slug)
-	}
-
-	if err := d.Set("team_slugs", slugs); err != nil {
+	if err := d.Set("team_slugs", flattenStringList(slices.Collect(maps.Keys(current)))); err != nil {
 		return diag.FromErr(err)
 	}
 
 	return nil
-}
-
-func resourceGithubOrganizationTeamsDelete(ctx context.Context, _ *schema.ResourceData, m any) diag.Diagnostics {
-	meta, _ := m.(*Owner)
-
-	// Destroying this resource only stops enforcing the team list; deleting
-	// every team would also drop all team repository access.
-	summary := "Removing organization teams from state only; no teams were deleted."
-	tflog.Warn(ctx, summary, map[string]any{"org": meta.name})
-
-	return diag.Diagnostics{{Severity: diag.Warning, Summary: summary}}
 }
 
 // getOrganizationTeamParents returns every team slug in the organization,

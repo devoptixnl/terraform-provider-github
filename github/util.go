@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/go-cty/cty"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -286,5 +287,17 @@ func toInt64(v any) int64 {
 		return int64(val)
 	default:
 		return 0
+	}
+}
+
+// stateOnlyDelete returns a Delete for an authoritative organization resource
+// whose destroy must leave the organization untouched, warning the user that
+// the resource was only removed from state.
+func stateOnlyDelete(summary string) schema.DeleteContextFunc {
+	return func(ctx context.Context, _ *schema.ResourceData, m any) diag.Diagnostics {
+		meta, _ := m.(*Owner)
+		tflog.Warn(ctx, summary, map[string]any{"org": meta.name})
+
+		return diag.Diagnostics{{Severity: diag.Warning, Summary: summary}}
 	}
 }

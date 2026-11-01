@@ -19,7 +19,7 @@ func resourceGithubOrganizationMembers() *schema.Resource {
 		CreateContext: resourceGithubOrganizationMembersCreateOrUpdate,
 		ReadContext:   resourceGithubOrganizationMembersRead,
 		UpdateContext: resourceGithubOrganizationMembersCreateOrUpdate,
-		DeleteContext: resourceGithubOrganizationMembersDelete,
+		DeleteContext: stateOnlyDelete("Removing organization members from state only; no memberships were changed."),
 		Importer: &schema.ResourceImporter{
 			StateContext: importOrganizationSingleton,
 		},
@@ -148,17 +148,6 @@ func resourceGithubOrganizationMembersRead(ctx context.Context, d *schema.Resour
 	}
 
 	return nil
-}
-
-func resourceGithubOrganizationMembersDelete(ctx context.Context, _ *schema.ResourceData, m any) diag.Diagnostics {
-	meta, _ := m.(*Owner)
-
-	// Removing every member would lock everyone, including the caller, out of
-	// the organization, so destroying this resource only stops managing them.
-	summary := "Removing organization members from state only; no memberships were changed."
-	tflog.Warn(ctx, summary, map[string]any{"org": meta.name})
-
-	return diag.Diagnostics{{Severity: diag.Warning, Summary: summary}}
 }
 
 // getOrganizationMembers returns every member of the organization plus every

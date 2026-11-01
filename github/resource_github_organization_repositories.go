@@ -19,7 +19,7 @@ func resourceGithubOrganizationRepositories() *schema.Resource {
 		CreateContext: resourceGithubOrganizationRepositoriesCreateOrUpdate,
 		ReadContext:   resourceGithubOrganizationRepositoriesRead,
 		UpdateContext: resourceGithubOrganizationRepositoriesCreateOrUpdate,
-		DeleteContext: resourceGithubOrganizationRepositoriesDelete,
+		DeleteContext: stateOnlyDelete("Removing organization repositories from state only; no repositories were archived."),
 		Importer: &schema.ResourceImporter{
 			StateContext: importOrganizationSingleton,
 		},
@@ -149,17 +149,6 @@ func resourceGithubOrganizationRepositoriesRead(ctx context.Context, d *schema.R
 	}
 
 	return nil
-}
-
-func resourceGithubOrganizationRepositoriesDelete(ctx context.Context, _ *schema.ResourceData, m any) diag.Diagnostics {
-	meta, _ := m.(*Owner)
-
-	// Destroying this resource only stops enforcing the repository list;
-	// archiving every repository would freeze the whole organization.
-	summary := "Removing organization repositories from state only; no repositories were archived."
-	tflog.Warn(ctx, summary, map[string]any{"org": meta.name})
-
-	return diag.Diagnostics{{Severity: diag.Warning, Summary: summary}}
 }
 
 type organizationRepository struct {
