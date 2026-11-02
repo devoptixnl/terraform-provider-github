@@ -1817,12 +1817,12 @@ func TestSetIfPresentKeepsStateWhenFieldIsOmitted(t *testing.T) {
 	})
 
 	setIfPresent[bool](d, "allow_merge_commit", nil)
-	if !d.Get("allow_merge_commit").(bool) {
+	if v, ok := d.Get("allow_merge_commit").(bool); !ok || !v {
 		t.Fatal("an omitted field must not overwrite the stored value")
 	}
 
 	setIfPresent(d, "allow_merge_commit", new(false))
-	if d.Get("allow_merge_commit").(bool) {
+	if v, ok := d.Get("allow_merge_commit").(bool); !ok || v {
 		t.Fatal("a returned field must overwrite the stored value")
 	}
 }
