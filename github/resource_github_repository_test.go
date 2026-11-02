@@ -1809,3 +1809,20 @@ func TestGithubRepositoryNameFailsValidationWithSpace(t *testing.T) {
 		t.Error(fmt.Errorf("unexpected name validation failure; expected=%s; action=%s", expectedFailure, actualFailure))
 	}
 }
+
+func TestSetIfPresentKeepsStateWhenFieldIsOmitted(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceGithubRepository().Schema, map[string]any{
+		"name":               "repo",
+		"allow_merge_commit": true,
+	})
+
+	setIfPresent[bool](d, "allow_merge_commit", nil)
+	if v, ok := d.Get("allow_merge_commit").(bool); !ok || !v {
+		t.Fatal("an omitted field must not overwrite the stored value")
+	}
+
+	setIfPresent(d, "allow_merge_commit", new(false))
+	if v, ok := d.Get("allow_merge_commit").(bool); !ok || v {
+		t.Fatal("a returned field must overwrite the stored value")
+	}
+}

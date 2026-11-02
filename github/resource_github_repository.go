@@ -848,19 +848,19 @@ func resourceGithubRepositoryRead(ctx context.Context, d *schema.ResourceData, m
 	// TODO: Validate this behavior as I can see these fields being returned even when archived
 	// GitHub API doesn't respond following parameters when repository is archived
 	if !d.Get("archived").(bool) {
-		_ = d.Set("allow_auto_merge", repo.GetAllowAutoMerge())
-		_ = d.Set("allow_merge_commit", repo.GetAllowMergeCommit())
-		_ = d.Set("allow_rebase_merge", repo.GetAllowRebaseMerge())
-		_ = d.Set("allow_squash_merge", repo.GetAllowSquashMerge())
-		_ = d.Set("allow_update_branch", repo.GetAllowUpdateBranch())
-		_ = d.Set("allow_forking", repo.GetAllowForking())
-		_ = d.Set("delete_branch_on_merge", repo.GetDeleteBranchOnMerge())
-		_ = d.Set("web_commit_signoff_required", repo.GetWebCommitSignoffRequired())
-		_ = d.Set("has_downloads", repo.GetHasDownloads())
-		_ = d.Set("merge_commit_message", repo.GetMergeCommitMessage())
-		_ = d.Set("merge_commit_title", repo.GetMergeCommitTitle())
-		_ = d.Set("squash_merge_commit_message", repo.GetSquashMergeCommitMessage())
-		_ = d.Set("squash_merge_commit_title", repo.GetSquashMergeCommitTitle())
+		setIfPresent(d, "allow_auto_merge", repo.AllowAutoMerge)
+		setIfPresent(d, "allow_merge_commit", repo.AllowMergeCommit)
+		setIfPresent(d, "allow_rebase_merge", repo.AllowRebaseMerge)
+		setIfPresent(d, "allow_squash_merge", repo.AllowSquashMerge)
+		setIfPresent(d, "allow_update_branch", repo.AllowUpdateBranch)
+		setIfPresent(d, "allow_forking", repo.AllowForking)
+		setIfPresent(d, "delete_branch_on_merge", repo.DeleteBranchOnMerge)
+		setIfPresent(d, "web_commit_signoff_required", repo.WebCommitSignoffRequired)
+		setIfPresent(d, "has_downloads", repo.HasDownloads)
+		setIfPresent(d, "merge_commit_message", repo.MergeCommitMessage)
+		setIfPresent(d, "merge_commit_title", repo.MergeCommitTitle)
+		setIfPresent(d, "squash_merge_commit_message", repo.SquashMergeCommitMessage)
+		setIfPresent(d, "squash_merge_commit_title", repo.SquashMergeCommitTitle)
 	}
 
 	_, isPagesConfigured := d.GetOk("pages")
@@ -1252,4 +1252,14 @@ func updateVulnerabilityAlerts(ctx context.Context, client *github.Client, owner
 	}
 
 	return nil
+}
+
+// setIfPresent sets key only when the API returned the field. GitHub leaves the
+// merge settings out of the repository response for tokens without write
+// access, and storing the zero value would show a change that never happens in
+// every plan made with a read-only token.
+func setIfPresent[T any](d *schema.ResourceData, key string, value *T) {
+	if value != nil {
+		_ = d.Set(key, *value)
+	}
 }
