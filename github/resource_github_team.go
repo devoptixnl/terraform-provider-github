@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -14,6 +15,16 @@ import (
 
 	"github.com/integrations/terraform-provider-github/v6/internal/tfpluginv2util"
 )
+
+// teamSlugMayChange reports whether a rename can change the slug. GitHub keeps the slug on a case-only
+// rename, so marking it unknown there would needlessly cascade into every resource that references it.
+func teamSlugMayChange(_ context.Context, d *schema.ResourceDiff, _ any) bool {
+	if !d.HasChange("name") {
+		return false
+	}
+	o, n := d.GetChange("name")
+	return !strings.EqualFold(o.(string), n.(string))
+}
 
 func resourceGithubTeam() *schema.Resource {
 	return &schema.Resource{
@@ -26,9 +37,7 @@ func resourceGithubTeam() *schema.Resource {
 		},
 
 		CustomizeDiff: customdiff.All(
-			customdiff.ComputedIf("slug", func(_ context.Context, d *schema.ResourceDiff, meta any) bool {
-				return d.HasChange("name")
-			}),
+			customdiff.ComputedIf("slug", teamSlugMayChange),
 			diffETag,
 		),
 
