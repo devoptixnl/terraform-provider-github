@@ -169,6 +169,29 @@ func resourceGithubOrganizationSettings() *schema.Resource {
 				Default:     false,
 				Description: "Whether or not secret scanning push protection is enabled for new repositories.",
 			},
+			"secret_scanning_push_protection_custom_link_enabled": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether a custom link is shown to contributors who are blocked from pushing a secret by push protection.",
+			},
+			"secret_scanning_push_protection_custom_link": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: "The URL shown to contributors who are blocked from pushing a secret by push protection, when `secret_scanning_push_protection_custom_link_enabled` is true.",
+			},
+			"deploy_keys_enabled_for_repositories": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether deploy keys may be added and used for repositories in the organization.",
+			},
+			"two_factor_requirement_enabled": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether members must enable two-factor authentication. Read-only: GitHub only allows changing it in the organization's security settings.",
+			},
 		},
 	}
 }
@@ -184,8 +207,8 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 	// Helper function to check if field should be included
 	shouldInclude := func(fieldName string) bool {
 		if !isUpdate {
-			// For creates, include if explicitly configured
-			_, ok := d.GetOk(fieldName)
+			// GetOk treats an explicit false as unset, which dropped it on create.
+			_, ok := d.GetOkExists(fieldName) //nolint:staticcheck // SA1019: GetOk cannot tell false from unset.
 			return ok
 		}
 		// For updates, only include if the field has changed
@@ -289,6 +312,15 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 	}
 	if shouldInclude("secret_scanning_push_protection_enabled_for_new_repositories") {
 		settings.SecretScanningPushProtectionEnabledForNewRepos = new(d.Get("secret_scanning_push_protection_enabled_for_new_repositories").(bool))
+	}
+	if shouldInclude("secret_scanning_push_protection_custom_link_enabled") {
+		settings.SecretScanningPushProtectionCustomLinkEnabled = new(d.Get("secret_scanning_push_protection_custom_link_enabled").(bool))
+	}
+	if shouldInclude("secret_scanning_push_protection_custom_link") {
+		settings.SecretScanningPushProtectionCustomLink = new(d.Get("secret_scanning_push_protection_custom_link").(string))
+	}
+	if shouldInclude("deploy_keys_enabled_for_repositories") {
+		settings.DeployKeysEnabledForRepositories = new(d.Get("deploy_keys_enabled_for_repositories").(bool))
 	}
 
 	// Enterprise-specific field
@@ -398,6 +430,15 @@ func resourceGithubOrganizationSettingsCreateOrUpdate(d *schema.ResourceData, me
 	}
 	if settings.SecretScanningPushProtectionEnabledForNewRepos != nil {
 		log.Printf("[DEBUG]   SecretScanningPushProtectionEnabledForNewRepos: %v", *settings.SecretScanningPushProtectionEnabledForNewRepos)
+	}
+	if settings.SecretScanningPushProtectionCustomLinkEnabled != nil {
+		log.Printf("[DEBUG]   SecretScanningPushProtectionCustomLinkEnabled: %v", *settings.SecretScanningPushProtectionCustomLinkEnabled)
+	}
+	if settings.SecretScanningPushProtectionCustomLink != nil {
+		log.Printf("[DEBUG]   SecretScanningPushProtectionCustomLink: %s", *settings.SecretScanningPushProtectionCustomLink)
+	}
+	if settings.DeployKeysEnabledForRepositories != nil {
+		log.Printf("[DEBUG]   DeployKeysEnabledForRepositories: %v", *settings.DeployKeysEnabledForRepositories)
 	}
 
 	orgSettings, _, err := client.Organizations.Edit(ctx, org, settings)
@@ -510,6 +551,18 @@ func resourceGithubOrganizationSettingsRead(d *schema.ResourceData, meta any) er
 		return err
 	}
 	if err = d.Set("secret_scanning_push_protection_enabled_for_new_repositories", orgSettings.GetSecretScanningPushProtectionEnabledForNewRepos()); err != nil {
+		return err
+	}
+	if err = d.Set("secret_scanning_push_protection_custom_link_enabled", orgSettings.GetSecretScanningPushProtectionCustomLinkEnabled()); err != nil {
+		return err
+	}
+	if err = d.Set("secret_scanning_push_protection_custom_link", orgSettings.GetSecretScanningPushProtectionCustomLink()); err != nil {
+		return err
+	}
+	if err = d.Set("deploy_keys_enabled_for_repositories", orgSettings.GetDeployKeysEnabledForRepositories()); err != nil {
+		return err
+	}
+	if err = d.Set("two_factor_requirement_enabled", orgSettings.GetTwoFactorRequirementEnabled()); err != nil {
 		return err
 	}
 	return nil

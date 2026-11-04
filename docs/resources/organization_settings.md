@@ -71,12 +71,16 @@ The following arguments are supported:
 - `dependency_graph_enabled_for_new_repositories` - (Optional) Whether or not dependency graph is enabled for new repositories. Defaults to `false`.
 - `secret_scanning_enabled_for_new_repositories` - (Optional) Whether or not secret scanning is enabled for new repositories. Defaults to `false`.
 - `secret_scanning_push_protection_enabled_for_new_repositories` - (Optional) Whether or not secret scanning push protection is enabled for new repositories. Defaults to `false`.
+- `secret_scanning_push_protection_custom_link_enabled` - (Optional) Whether a custom link is shown to contributors who are blocked from pushing a secret by push protection. Left unmanaged when not set.
+- `secret_scanning_push_protection_custom_link` - (Optional) The URL shown to contributors who are blocked by push protection when `secret_scanning_push_protection_custom_link_enabled` is `true`. Left unmanaged when not set.
+- `deploy_keys_enabled_for_repositories` - (Optional) Whether deploy keys may be added and used for repositories in the organization. Left unmanaged when not set.
 
 ## Attributes Reference
 
 The following additional attributes are exported:
 
 - `id` - The ID of the organization settings.
+- `two_factor_requirement_enabled` - Whether members must enable two-factor authentication. GitHub exposes no API to change this for an organization, so it is read-only; use it in a `check` block or `postcondition` to detect when the requirement is off.
 
 ## Import
 
