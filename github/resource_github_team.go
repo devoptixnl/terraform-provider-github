@@ -24,7 +24,11 @@ func teamSlugMayChange(_ context.Context, d *schema.ResourceDiff, _ any) bool {
 		return false
 	}
 	o, n := d.GetChange("name")
-	oldName, newName := o.(string), n.(string)
+	oldName, okOld := o.(string)
+	newName, okNew := n.(string)
+	if !okOld || !okNew {
+		return true
+	}
 	// EqualFold folds non-ASCII runes (long s to s) that GitHub's slug rules do not.
 	return !isASCII(oldName) || !isASCII(newName) || !strings.EqualFold(oldName, newName)
 }

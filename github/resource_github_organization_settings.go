@@ -309,14 +309,14 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 	if shouldInclude("secret_scanning_push_protection_enabled_for_new_repositories") {
 		settings.SecretScanningPushProtectionEnabledForNewRepos = new(d.Get("secret_scanning_push_protection_enabled_for_new_repositories").(bool))
 	}
-	if shouldInclude("secret_scanning_push_protection_custom_link_enabled") {
-		settings.SecretScanningPushProtectionCustomLinkEnabled = new(d.Get("secret_scanning_push_protection_custom_link_enabled").(bool))
+	if v, ok := d.Get("secret_scanning_push_protection_custom_link_enabled").(bool); ok && shouldInclude("secret_scanning_push_protection_custom_link_enabled") {
+		settings.SecretScanningPushProtectionCustomLinkEnabled = new(v)
 	}
-	if shouldInclude("secret_scanning_push_protection_custom_link") {
-		settings.SecretScanningPushProtectionCustomLink = new(d.Get("secret_scanning_push_protection_custom_link").(string))
+	if v, ok := d.Get("secret_scanning_push_protection_custom_link").(string); ok && shouldInclude("secret_scanning_push_protection_custom_link") {
+		settings.SecretScanningPushProtectionCustomLink = new(v)
 	}
-	if shouldInclude("deploy_keys_enabled_for_repositories") {
-		settings.DeployKeysEnabledForRepositories = new(d.Get("deploy_keys_enabled_for_repositories").(bool))
+	if v, ok := d.Get("deploy_keys_enabled_for_repositories").(bool); ok && shouldInclude("deploy_keys_enabled_for_repositories") {
+		settings.DeployKeysEnabledForRepositories = new(v)
 	}
 
 	// Enterprise-specific field
