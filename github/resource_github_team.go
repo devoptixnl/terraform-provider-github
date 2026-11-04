@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -14,6 +16,31 @@ import (
 
 	"github.com/integrations/terraform-provider-github/v6/internal/tfpluginv2util"
 )
+
+// teamSlugMayChange reports whether a rename can change the slug. GitHub keeps the slug on a case-only
+// rename, so marking it unknown there would needlessly cascade into every resource that references it.
+func teamSlugMayChange(_ context.Context, d *schema.ResourceDiff, _ any) bool {
+	if !d.HasChange("name") {
+		return false
+	}
+	o, n := d.GetChange("name")
+	oldName, okOld := o.(string)
+	newName, okNew := n.(string)
+	if !okOld || !okNew {
+		return true
+	}
+	// EqualFold folds non-ASCII runes (long s to s) that GitHub's slug rules do not.
+	return !isASCII(oldName) || !isASCII(newName) || !strings.EqualFold(oldName, newName)
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
 
 func resourceGithubTeam() *schema.Resource {
 	return &schema.Resource{
@@ -26,9 +53,7 @@ func resourceGithubTeam() *schema.Resource {
 		},
 
 		CustomizeDiff: customdiff.All(
-			customdiff.ComputedIf("slug", func(_ context.Context, d *schema.ResourceDiff, meta any) bool {
-				return d.HasChange("name")
-			}),
+			customdiff.ComputedIf("slug", teamSlugMayChange),
 			diffETag,
 		),
 

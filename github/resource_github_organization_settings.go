@@ -169,12 +169,32 @@ func resourceGithubOrganizationSettings() *schema.Resource {
 				Default:     false,
 				Description: "Whether or not secret scanning push protection is enabled for new repositories.",
 			},
+			"secret_scanning_push_protection_custom_link_enabled": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether a custom link is shown to contributors who are blocked from pushing a secret by push protection.",
+			},
+			"secret_scanning_push_protection_custom_link": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				ValidateDiagFunc: validation.ToDiagFunc(validation.IsURLWithHTTPorHTTPS),
+				Description:      "The URL shown to contributors who are blocked from pushing a secret by push protection, when `secret_scanning_push_protection_custom_link_enabled` is true.",
+			},
+			"deploy_keys_enabled_for_repositories": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether deploy keys may be added and used for repositories in the organization.",
+			},
 		},
 	}
 }
 
-// buildOrganizationSettings creates a github.Organization struct with only the fields that are explicitly configured.
-// For updates, it only includes fields that have actually changed to avoid API validation errors.
+// buildOrganizationSettings creates the github.Organization payload. On create it includes every field that is
+// configured or has a schema default, matching what an update converges to. On update it only includes fields
+// that have changed, to avoid API validation errors. Optional+Computed fields left unset are never sent.
 func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *github.Organization {
 	settings := &github.Organization{}
 
@@ -184,8 +204,7 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 	// Helper function to check if field should be included
 	shouldInclude := func(fieldName string) bool {
 		if !isUpdate {
-			// For creates, include if explicitly configured
-			_, ok := d.GetOk(fieldName)
+			_, ok := d.GetOkExists(fieldName) //nolint:staticcheck // SA1019: GetOk cannot tell an explicit false from unset.
 			return ok
 		}
 		// For updates, only include if the field has changed
@@ -290,6 +309,15 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 	if shouldInclude("secret_scanning_push_protection_enabled_for_new_repositories") {
 		settings.SecretScanningPushProtectionEnabledForNewRepos = new(d.Get("secret_scanning_push_protection_enabled_for_new_repositories").(bool))
 	}
+	if v, ok := d.Get("secret_scanning_push_protection_custom_link_enabled").(bool); ok && shouldInclude("secret_scanning_push_protection_custom_link_enabled") {
+		settings.SecretScanningPushProtectionCustomLinkEnabled = new(v)
+	}
+	if v, ok := d.Get("secret_scanning_push_protection_custom_link").(string); ok && shouldInclude("secret_scanning_push_protection_custom_link") {
+		settings.SecretScanningPushProtectionCustomLink = new(v)
+	}
+	if v, ok := d.Get("deploy_keys_enabled_for_repositories").(bool); ok && shouldInclude("deploy_keys_enabled_for_repositories") {
+		settings.DeployKeysEnabledForRepositories = new(v)
+	}
 
 	// Enterprise-specific field
 	if isEnterprise {
@@ -319,86 +347,7 @@ func resourceGithubOrganizationSettingsCreateOrUpdate(d *schema.ResourceData, me
 	isEnterprise := orgInfo.GetPlan().GetName() == "enterprise"
 	settings := buildOrganizationSettings(d, isEnterprise)
 
-	// Debug: Log the settings being sent to the API with detailed field information
-	log.Printf("[DEBUG] Built settings for org %s (enterprise: %v)", org, isEnterprise)
-	if settings.BillingEmail != nil {
-		log.Printf("[DEBUG]   BillingEmail: %s", *settings.BillingEmail)
-	}
-	if settings.Company != nil {
-		log.Printf("[DEBUG]   Company: %s", *settings.Company)
-	}
-	if settings.Email != nil {
-		log.Printf("[DEBUG]   Email: %s", *settings.Email)
-	}
-	if settings.TwitterUsername != nil {
-		log.Printf("[DEBUG]   TwitterUsername: %s", *settings.TwitterUsername)
-	}
-	if settings.Location != nil {
-		log.Printf("[DEBUG]   Location: %s", *settings.Location)
-	}
-	if settings.Name != nil {
-		log.Printf("[DEBUG]   Name: %s", *settings.Name)
-	}
-	if settings.Description != nil {
-		log.Printf("[DEBUG]   Description: %s", *settings.Description)
-	}
-	if settings.Blog != nil {
-		log.Printf("[DEBUG]   Blog: %s", *settings.Blog)
-	}
-	if settings.HasOrganizationProjects != nil {
-		log.Printf("[DEBUG]   HasOrganizationProjects: %v", *settings.HasOrganizationProjects)
-	}
-	if settings.HasRepositoryProjects != nil {
-		log.Printf("[DEBUG]   HasRepositoryProjects: %v", *settings.HasRepositoryProjects)
-	}
-	if settings.DefaultRepoPermission != nil {
-		log.Printf("[DEBUG]   DefaultRepoPermission: %s", *settings.DefaultRepoPermission)
-	}
-	if settings.MembersCanCreateRepos != nil {
-		log.Printf("[DEBUG]   MembersCanCreateRepos: %v", *settings.MembersCanCreateRepos)
-	}
-	if settings.MembersCanCreatePrivateRepos != nil {
-		log.Printf("[DEBUG]   MembersCanCreatePrivateRepos: %v", *settings.MembersCanCreatePrivateRepos)
-	}
-	if settings.MembersCanCreatePublicRepos != nil {
-		log.Printf("[DEBUG]   MembersCanCreatePublicRepos: %v", *settings.MembersCanCreatePublicRepos)
-	}
-	if settings.MembersCanCreateInternalRepos != nil {
-		log.Printf("[DEBUG]   MembersCanCreateInternalRepos: %v", *settings.MembersCanCreateInternalRepos)
-	}
-	if settings.MembersCanCreatePages != nil {
-		log.Printf("[DEBUG]   MembersCanCreatePages: %v", *settings.MembersCanCreatePages)
-	}
-	if settings.MembersCanCreatePublicPages != nil {
-		log.Printf("[DEBUG]   MembersCanCreatePublicPages: %v", *settings.MembersCanCreatePublicPages)
-	}
-	if settings.MembersCanCreatePrivatePages != nil {
-		log.Printf("[DEBUG]   MembersCanCreatePrivatePages: %v", *settings.MembersCanCreatePrivatePages)
-	}
-	if settings.MembersCanForkPrivateRepos != nil {
-		log.Printf("[DEBUG]   MembersCanForkPrivateRepos: %v", *settings.MembersCanForkPrivateRepos)
-	}
-	if settings.WebCommitSignoffRequired != nil {
-		log.Printf("[DEBUG]   WebCommitSignoffRequired: %v", *settings.WebCommitSignoffRequired)
-	}
-	if settings.AdvancedSecurityEnabledForNewRepos != nil {
-		log.Printf("[DEBUG]   AdvancedSecurityEnabledForNewRepos: %v", *settings.AdvancedSecurityEnabledForNewRepos)
-	}
-	if settings.DependabotAlertsEnabledForNewRepos != nil {
-		log.Printf("[DEBUG]   DependabotAlertsEnabledForNewRepos: %v", *settings.DependabotAlertsEnabledForNewRepos)
-	}
-	if settings.DependabotSecurityUpdatesEnabledForNewRepos != nil {
-		log.Printf("[DEBUG]   DependabotSecurityUpdatesEnabledForNewRepos: %v", *settings.DependabotSecurityUpdatesEnabledForNewRepos)
-	}
-	if settings.DependencyGraphEnabledForNewRepos != nil {
-		log.Printf("[DEBUG]   DependencyGraphEnabledForNewRepos: %v", *settings.DependencyGraphEnabledForNewRepos)
-	}
-	if settings.SecretScanningEnabledForNewRepos != nil {
-		log.Printf("[DEBUG]   SecretScanningEnabledForNewRepos: %v", *settings.SecretScanningEnabledForNewRepos)
-	}
-	if settings.SecretScanningPushProtectionEnabledForNewRepos != nil {
-		log.Printf("[DEBUG]   SecretScanningPushProtectionEnabledForNewRepos: %v", *settings.SecretScanningPushProtectionEnabledForNewRepos)
-	}
+	log.Printf("[DEBUG] Built settings for org %s (enterprise: %v): %s", org, isEnterprise, settings)
 
 	orgSettings, _, err := client.Organizations.Edit(ctx, org, settings)
 	if err != nil {
@@ -510,6 +459,15 @@ func resourceGithubOrganizationSettingsRead(d *schema.ResourceData, meta any) er
 		return err
 	}
 	if err = d.Set("secret_scanning_push_protection_enabled_for_new_repositories", orgSettings.GetSecretScanningPushProtectionEnabledForNewRepos()); err != nil {
+		return err
+	}
+	if err = d.Set("secret_scanning_push_protection_custom_link_enabled", orgSettings.GetSecretScanningPushProtectionCustomLinkEnabled()); err != nil {
+		return err
+	}
+	if err = d.Set("secret_scanning_push_protection_custom_link", orgSettings.GetSecretScanningPushProtectionCustomLink()); err != nil {
+		return err
+	}
+	if err = d.Set("deploy_keys_enabled_for_repositories", orgSettings.GetDeployKeysEnabledForRepositories()); err != nil {
 		return err
 	}
 	return nil

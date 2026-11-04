@@ -1,11 +1,13 @@
 package github
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -272,4 +274,39 @@ resource "github_team" "test" {
 			},
 		})
 	})
+}
+
+func TestGithubTeamSlugComputedOnRename(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		newName      string
+		wantComputed bool
+	}{
+		{name: "case-only rename keeps the slug", newName: "Kube Test", wantComputed: false},
+		{name: "real rename may change the slug", newName: "other team", wantComputed: true},
+		{name: "non-ASCII case fold may change the slug", newName: "kube te\u017ft", wantComputed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &terraform.InstanceState{
+				ID: "1",
+				Attributes: map[string]string{
+					"id":   "1",
+					"name": "kube test",
+					"slug": "kube-test",
+				},
+			}
+			cfg := terraform.NewResourceConfigRaw(map[string]any{"name": tc.newName})
+
+			diff, err := resourceGithubTeam().Diff(context.Background(), state, cfg, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			slug, ok := diff.Attributes["slug"]
+			computed := ok && slug.NewComputed
+			if computed != tc.wantComputed {
+				t.Errorf("slug computed = %v, want %v", computed, tc.wantComputed)
+			}
+		})
+	}
 }
