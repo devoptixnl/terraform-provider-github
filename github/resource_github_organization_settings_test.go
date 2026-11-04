@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -611,5 +612,58 @@ func TestAccGithubOrganizationSettings(t *testing.T) {
 				},
 			})
 		})
+	})
+}
+
+func TestBuildOrganizationSettings(t *testing.T) {
+	t.Run("sends explicit false and defaults on create", func(t *testing.T) {
+		d := schema.TestResourceDataRaw(t, resourceGithubOrganizationSettings().Schema, map[string]any{
+			"billing_email":                        "billing@example.com",
+			"members_can_create_repositories":      false,
+			"deploy_keys_enabled_for_repositories": false,
+		})
+
+		settings := buildOrganizationSettings(d, false)
+
+		if settings.MembersCanCreateRepos == nil || *settings.MembersCanCreateRepos {
+			t.Errorf("explicit false members_can_create_repositories must be sent, got %v", settings.MembersCanCreateRepos)
+		}
+		if settings.DeployKeysEnabledForRepositories == nil || *settings.DeployKeysEnabledForRepositories {
+			t.Errorf("explicit false deploy_keys_enabled_for_repositories must be sent, got %v", settings.DeployKeysEnabledForRepositories)
+		}
+		if settings.WebCommitSignoffRequired == nil || *settings.WebCommitSignoffRequired {
+			t.Errorf("unconfigured web_commit_signoff_required must be sent as its default false, got %v", settings.WebCommitSignoffRequired)
+		}
+		if settings.SecretScanningPushProtectionCustomLinkEnabled != nil || settings.SecretScanningPushProtectionCustomLink != nil {
+			t.Errorf("unconfigured push protection custom link fields must not be sent")
+		}
+	})
+
+	t.Run("sends only changed fields on update", func(t *testing.T) {
+		d := schema.TestResourceDataRaw(t, resourceGithubOrganizationSettings().Schema, map[string]any{
+			"billing_email": "billing@example.com",
+			"secret_scanning_push_protection_custom_link_enabled": true,
+			"secret_scanning_push_protection_custom_link":         "https://example.com/secrets",
+		})
+		d.SetId("123")
+
+		settings := buildOrganizationSettings(d, false)
+
+		if settings.SecretScanningPushProtectionCustomLinkEnabled == nil || !*settings.SecretScanningPushProtectionCustomLinkEnabled {
+			t.Errorf("changed secret_scanning_push_protection_custom_link_enabled must be sent, got %v", settings.SecretScanningPushProtectionCustomLinkEnabled)
+		}
+		if settings.GetSecretScanningPushProtectionCustomLink() != "https://example.com/secrets" {
+			t.Errorf("changed secret_scanning_push_protection_custom_link must be sent, got %v", settings.SecretScanningPushProtectionCustomLink)
+		}
+		if settings.DeployKeysEnabledForRepositories != nil {
+			t.Errorf("unconfigured deploy_keys_enabled_for_repositories must not be sent on update")
+		}
+	})
+
+	t.Run("rejects a custom link that is not a URL", func(t *testing.T) {
+		s := resourceGithubOrganizationSettings().Schema["secret_scanning_push_protection_custom_link"]
+		if diags := s.ValidateDiagFunc("not a url", nil); !diags.HasError() {
+			t.Error("expected a validation error for a non-URL custom link")
+		}
 	})
 }
