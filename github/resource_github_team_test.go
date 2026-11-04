@@ -282,16 +282,17 @@ func TestGithubTeamSlugComputedOnRename(t *testing.T) {
 		newName      string
 		wantComputed bool
 	}{
-		{name: "case-only rename keeps the slug", newName: "My Team", wantComputed: false},
+		{name: "case-only rename keeps the slug", newName: "Kube Test", wantComputed: false},
 		{name: "real rename may change the slug", newName: "other team", wantComputed: true},
+		{name: "non-ASCII case fold may change the slug", newName: "kube te\u017ft", wantComputed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &terraform.InstanceState{
 				ID: "1",
 				Attributes: map[string]string{
 					"id":   "1",
-					"name": "my team",
-					"slug": "my-team",
+					"name": "kube test",
+					"slug": "kube-test",
 				},
 			}
 			cfg := terraform.NewResourceConfigRaw(map[string]any{"name": tc.newName})

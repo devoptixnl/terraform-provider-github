@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -23,7 +24,18 @@ func teamSlugMayChange(_ context.Context, d *schema.ResourceDiff, _ any) bool {
 		return false
 	}
 	o, n := d.GetChange("name")
-	return !strings.EqualFold(o.(string), n.(string))
+	oldName, newName := o.(string), n.(string)
+	// EqualFold folds non-ASCII runes (long s to s) that GitHub's slug rules do not.
+	return !isASCII(oldName) || !isASCII(newName) || !strings.EqualFold(oldName, newName)
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
 }
 
 func resourceGithubTeam() *schema.Resource {
