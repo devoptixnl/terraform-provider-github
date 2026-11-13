@@ -2,7 +2,11 @@ package github
 
 import (
 	"context"
+	"errors"
+	"log"
+	"net/http"
 
+	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -62,6 +66,11 @@ func resourceGithubRepositoryDependabotSecurityUpdatesRead(d *schema.ResourceDat
 
 	p, _, err := client.Repositories.GetAutomatedSecurityFixes(ctx, orgName, repoName)
 	if err != nil {
+		if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response.StatusCode == http.StatusNotFound {
+			log.Printf("[INFO] Removing Dependabot security updates for %s/%s from state because the repository no longer exists", orgName, repoName)
+			d.SetId("")
+			return nil
+		}
 		return err
 	}
 	_ = d.Set("enabled", p.Enabled)
