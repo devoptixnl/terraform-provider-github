@@ -231,7 +231,11 @@ func Test_resourceGithubRepositoryDependabotSecurityUpdatesRead(t *testing.T) {
 			if d.Id() != tt.wantID {
 				t.Fatalf("expected id %q, got %q", tt.wantID, d.Id())
 			}
-			if got := d.Get("enabled").(bool); got != tt.wantEnable {
+			got, ok := d.Get("enabled").(bool)
+			if !ok {
+				t.Fatalf("expected enabled to be a bool, got %T", d.Get("enabled"))
+			}
+			if got != tt.wantEnable {
 				t.Fatalf("expected enabled %v, got %v", tt.wantEnable, got)
 			}
 		})
